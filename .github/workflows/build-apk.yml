@@ -27,7 +27,7 @@ jobs:
       - name: Descomprimir proyecto
         run: unzip -q escuchar_aves_android.zip
 
-      - name: Crear automatizacion Merlin
+      - name: Crear automatizacion Merlin v7
         run: |
           BASE="escuchar_aves_android/app/src/main"
           JAVA="$BASE/java/com/birdscolombia/escucharaves"
@@ -35,15 +35,10 @@ jobs:
           cat > "$JAVA/MainActivity.java" <<'JAVA'
           package com.birdscolombia.escucharaves;
 
-          import android.accessibilityservice.AccessibilityServiceInfo;
           import android.app.Activity;
           import android.content.Intent;
           import android.os.Bundle;
-          import android.provider.Settings;
-          import android.view.accessibility.AccessibilityManager;
           import android.widget.Toast;
-
-          import java.util.List;
 
           public class MainActivity extends Activity {
 
@@ -53,21 +48,6 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-
-                  if (!isAccessibilityEnabled()) {
-                      Toast.makeText(
-                              this,
-                              "Activa Escuchar aves en Accesibilidad. Luego vuelve a tocar el icono.",
-                              Toast.LENGTH_LONG
-                      ).show();
-
-                      startActivity(
-                              new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                      );
-
-                      finish();
-                      return;
-                  }
 
                   long trigger = System.currentTimeMillis();
 
@@ -82,13 +62,16 @@ jobs:
                                   .getLaunchIntentForPackage(MERLIN);
 
                   if (merlin != null) {
+
                       merlin.addFlags(
                               Intent.FLAG_ACTIVITY_NEW_TASK |
                               Intent.FLAG_ACTIVITY_CLEAR_TOP
                       );
 
                       startActivity(merlin);
+
                   } else {
+
                       Toast.makeText(
                               this,
                               "No encontré Merlin Bird ID.",
@@ -97,36 +80,6 @@ jobs:
                   }
 
                   finish();
-              }
-
-              private boolean isAccessibilityEnabled() {
-                  AccessibilityManager manager =
-                          (AccessibilityManager)
-                                  getSystemService(ACCESSIBILITY_SERVICE);
-
-                  List<AccessibilityServiceInfo> services =
-                          manager.getEnabledAccessibilityServiceList(
-                                  AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-                          );
-
-                  for (AccessibilityServiceInfo service : services) {
-                      if (service.getResolveInfo() != null &&
-                              service.getResolveInfo().serviceInfo != null &&
-                              getPackageName().equals(
-                                      service.getResolveInfo()
-                                              .serviceInfo.packageName
-                              ) &&
-                              MerlinAccessibilityService.class
-                                      .getName()
-                                      .equals(
-                                              service.getResolveInfo()
-                                                      .serviceInfo.name
-                                      )) {
-                          return true;
-                      }
-                  }
-
-                  return false;
               }
           }
           JAVA
@@ -167,49 +120,47 @@ jobs:
                       return;
                   }
 
-                  long trigger =
-                          getSharedPreferences(
-                                  "automation",
-                                  MODE_PRIVATE
-                          ).getLong("trigger", 0);
-
                   boolean pending =
                           getSharedPreferences(
                                   "automation",
                                   MODE_PRIVATE
                           ).getBoolean("pending", false);
 
-                  if (!pending ||
-                          trigger == 0 ||
-                          trigger == lastHandledTrigger) {
+                  long trigger =
+                          getSharedPreferences(
+                                  "automation",
+                                  MODE_PRIVATE
+                          ).getLong("trigger", 0);
+
+                  if (!pending || trigger == 0) {
                       return;
                   }
 
                   if (System.currentTimeMillis() - trigger
-                          > 15000) {
+                          > 20000) {
                       clearPending();
+                      return;
+                  }
+
+                  if (trigger == lastHandledTrigger) {
                       return;
                   }
 
                   lastHandledTrigger = trigger;
 
                   handler.postDelayed(
-                          this::firstStep,
-                          900
+                          this::openAudioId,
+                          1200
                   );
               }
 
-              private void firstStep() {
+              private void openAudioId() {
 
-                  // Si Merlin ya quedó en la pantalla de Sound ID,
-                  // vamos directamente al botón de grabar.
-                  if (screenContains(
-                          "No hay sugerencias",
-                          "No suggestions")) {
+                  if (isSoundIdScreen()) {
 
                       handler.postDelayed(
                               this::startRecording,
-                              300
+                              500
                       );
 
                       return;
@@ -221,9 +172,8 @@ jobs:
                                   "Sound ID"
                           );
 
-                  // Respaldo para la posición del botón
-                  // central Audio ID.
                   if (!clicked) {
+
                       tapRelative(
                               0.50f,
                               0.66f
@@ -232,32 +182,99 @@ jobs:
 
                   handler.postDelayed(
                           this::startRecording,
-                          1600
+                          2200
                   );
               }
 
               private void startRecording() {
+
+                  if (!isSoundIdScreen()) {
+
+                      handler.postDelayed(
+                              this::startRecordingSecondTry,
+                              1200
+                      );
+
+                      return;
+                  }
 
                   boolean clicked =
                           clickByKeywords(
                                   "Iniciar grabación",
                                   "Start recording",
                                   "Grabar",
+                                  "Record",
                                   "Micrófono",
                                   "Microphone"
                           );
 
-                  // Respaldo: botón verde del micrófono.
                   if (!clicked) {
+
                       tapRelative(
                               0.50f,
-                              0.716f
+                              0.715f
                       );
                   }
 
                   handler.postDelayed(
                           this::clearPending,
-                          800
+                          1200
+                  );
+              }
+
+              private void startRecordingSecondTry() {
+
+                  boolean audioClicked =
+                          clickByKeywords(
+                                  "Audio ID",
+                                  "Sound ID"
+                          );
+
+                  if (!audioClicked) {
+
+                      tapRelative(
+                              0.50f,
+                              0.66f
+                      );
+                  }
+
+                  handler.postDelayed(
+                          () -> {
+
+                              boolean recordClicked =
+                                      clickByKeywords(
+                                              "Iniciar grabación",
+                                              "Start recording",
+                                              "Grabar",
+                                              "Record",
+                                              "Micrófono",
+                                              "Microphone"
+                                      );
+
+                              if (!recordClicked) {
+
+                                  tapRelative(
+                                          0.50f,
+                                          0.715f
+                                  );
+                              }
+
+                              handler.postDelayed(
+                                      this::clearPending,
+                                      1200
+                              );
+                          },
+                          2000
+                  );
+              }
+
+              private boolean isSoundIdScreen() {
+
+                  return screenContains(
+                          "No hay sugerencias",
+                          "No suggestions",
+                          "¿Por qué Merlin no está identificando",
+                          "Why isn't Merlin identifying"
                   );
               }
 
@@ -272,6 +289,7 @@ jobs:
                   }
 
                   for (String keyword : keywords) {
+
                       AccessibilityNodeInfo node =
                               findNode(root, keyword);
 
@@ -295,7 +313,9 @@ jobs:
                   String target =
                           keyword.toLowerCase(Locale.ROOT);
 
-                  CharSequence text = node.getText();
+                  CharSequence text =
+                          node.getText();
+
                   CharSequence description =
                           node.getContentDescription();
 
@@ -338,10 +358,11 @@ jobs:
                           node;
 
                   for (int i = 0;
-                       i < 7 && current != null;
+                       i < 8 && current != null;
                        i++) {
 
                       if (current.isClickable()) {
+
                           return current.performAction(
                                   AccessibilityNodeInfo.ACTION_CLICK
                           );
@@ -364,6 +385,7 @@ jobs:
                   }
 
                   for (String keyword : keywords) {
+
                       if (findNode(root, keyword)
                               != null) {
                           return true;
@@ -400,7 +422,7 @@ jobs:
                                                   .StrokeDescription(
                                                   path,
                                                   0,
-                                                  80
+                                                  100
                                           )
                                   )
                                   .build();
@@ -413,6 +435,7 @@ jobs:
               }
 
               private void clearPending() {
+
                   getSharedPreferences(
                           "automation",
                           MODE_PRIVATE
@@ -436,12 +459,13 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <accessibility-service
               xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged|typeViewClicked"
               android:accessibilityFeedbackType="feedbackGeneric"
               android:notificationTimeout="100"
               android:packageNames="com.labs.merlinbirdid.app"
               android:canRetrieveWindowContent="true"
               android:canPerformGestures="true"
+              android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
               android:description="@string/app_name" />
           XML
 
@@ -459,13 +483,17 @@ jobs:
           )
 
           if "com.labs.merlinbirdid.app" not in text:
+
               if "<queries>" in text:
+
                   text = text.replace(
                       "</queries>",
                       f"    {merlin_package}\n    </queries>",
                       1
                   )
+
               else:
+
                   text = text.replace(
                       "<application",
                       "    <queries>\n"
@@ -481,19 +509,24 @@ jobs:
                       android:label="Escuchar aves"
                       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
                       android:exported="true">
+
                       <intent-filter>
                           <action android:name="android.accessibilityservice.AccessibilityService" />
                       </intent-filter>
+
                       <meta-data
                           android:name="android.accessibilityservice"
                           android:resource="@xml/merlin_accessibility_service" />
+
                   </service>
           """
 
           if "MerlinAccessibilityService" not in text:
+
               text = text.replace(
                   "</application>",
-                  service + "\n    </application>",
+                  service +
+                  "\n    </application>",
                   1
               )
 
@@ -514,5 +547,5 @@ jobs:
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: EscucharAves-APK-v6
+          name: EscucharAves-APK-v7
           path: escuchar_aves_android/app/build/outputs/apk/debug/app-debug.apk
