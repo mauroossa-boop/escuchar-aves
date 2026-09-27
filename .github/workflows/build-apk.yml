@@ -27,6 +27,11 @@ jobs:
       - name: Descomprimir proyecto
         run: unzip -q escuchar_aves_android.zip
 
+      - name: Corregir lanzamiento directo de Merlin
+        run: |
+          FILE=$(find escuchar_aves_android -name MainActivity.java | head -n 1)
+          sed -i 's/Intent direct = new Intent(Intent.ACTION_VIEW, RECORD_URI);/Intent direct = new Intent(Intent.ACTION_MAIN);/' "$FILE"
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -40,4 +45,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EscucharAves-APK
-          path: escuchar_aves_android/app/build/outputs/apk/debug/app-debug.apk
+          path: escuchar_aves_android/app/build/outputs/apk/debug/app-debug.apk1
