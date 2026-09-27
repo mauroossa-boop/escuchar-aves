@@ -27,10 +27,54 @@ jobs:
       - name: Descomprimir proyecto
         run: unzip -q escuchar_aves_android.zip
 
-      - name: Corregir lanzamiento directo de Merlin
+      - name: Abrir directamente Merlin Audio ID
         run: |
           FILE=$(find escuchar_aves_android -name MainActivity.java | head -n 1)
-          sed -i 's/Intent direct = new Intent(Intent.ACTION_VIEW, RECORD_URI);/Intent direct = new Intent(Intent.ACTION_MAIN);/' "$FILE"
+
+          cat > "$FILE" <<'EOF'
+          package com.birdscolombia.escucharaves;
+
+          import android.app.Activity;
+          import android.content.ActivityNotFoundException;
+          import android.content.ComponentName;
+          import android.content.Intent;
+          import android.os.Bundle;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  try {
+                      Intent intent = new Intent(Intent.ACTION_MAIN);
+
+                      intent.setComponent(new ComponentName(
+                              "com.labs.merlinbirdid.app",
+                              "edu.cornell.birds.merlin.soundid.deeplink.SoundIdDeepLinksActivity"
+                      ));
+
+                      startActivity(intent);
+
+                  } catch (ActivityNotFoundException e) {
+
+                      Intent fallback =
+                              getPackageManager().getLaunchIntentForPackage(
+                                      "com.labs.merlinbirdid.app"
+                              );
+
+                      if (fallback != null) {
+                          startActivity(fallback);
+                      }
+                  }
+
+                  finish();
+              }
+          }
+          EOF
+
+          echo "MainActivity reemplazada:"
+          grep -n "SoundIdDeepLinksActivity" "$FILE"
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -44,5 +88,5 @@ jobs:
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: EscucharAves-APK
+          name: EscucharAves-APK-v5
           path: escuchar_aves_android/app/build/outputs/apk/debug/app-debug.apk
